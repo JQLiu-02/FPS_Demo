@@ -3,6 +3,7 @@
 
 #include "FPSCharacter.h"
 
+#include "DrawDebugHelpers.h"
 #include "Camera/CameraComponent.h"
 #include "Components/SkeletalMeshComponent.h"
 #include "EnhancedInputSubsystems.h"
@@ -10,6 +11,10 @@
 #include "InputActionValue.h"
 #include "GameFramework/CharacterMovementComponent.h"
 #include "GameFramework/PlayerController.h"
+#include "Engine/Engine.h"
+#include "Blueprint/UserWidget.h"
+#include "EnemyCharacter.h" 
+
 
 // Sets default values
 AFPSCharacter::AFPSCharacter()
@@ -63,6 +68,35 @@ AFPSCharacter::AFPSCharacter()
 
     // 第三人称 Mesh 用作世界空间表现
     GetMesh()->FirstPersonPrimitiveType = EFirstPersonPrimitiveType::WorldSpaceRepresentation;
+
+     //Create first-person weapon mesh component
+    FirstPersonWeaponMeshComponent = CreateDefaultSubobject<USkeletalMeshComponent>(TEXT("FirstPersonWeaponMesh"));
+    check(FirstPersonWeaponMeshComponent != nullptr);
+
+    FirstPersonWeaponMeshComponent->SetupAttachment(
+        FirstPersonMeshComponent,
+        FirstPersonWeaponSocketName
+    );
+
+	// 第一人称武器 Mesh 使用第一人称渲染通道
+    FirstPersonWeaponMeshComponent->FirstPersonPrimitiveType = EFirstPersonPrimitiveType::FirstPerson;
+
+    FirstPersonWeaponMeshComponent->SetOnlyOwnerSee(true);
+    FirstPersonWeaponMeshComponent->SetCastShadow(false);
+
+
+    // Third-person weapon mesh
+    ThirdPersonWeaponMeshComponent = CreateDefaultSubobject<USkeletalMeshComponent>(TEXT("ThirdPersonWeaponMesh"));
+    check(ThirdPersonWeaponMeshComponent != nullptr);
+
+    ThirdPersonWeaponMeshComponent->SetupAttachment(
+        GetMesh(),
+        ThirdPersonWeaponSocketName
+    );
+
+    ThirdPersonWeaponMeshComponent->SetOwnerNoSee(true);
+    ThirdPersonWeaponMeshComponent->SetCastShadow(true);
+    ThirdPersonWeaponMeshComponent->bCastHiddenShadow = true;
 }
 
 // Called when the game starts or when spawned
@@ -71,14 +105,62 @@ void AFPSCharacter::BeginPlay()
 	Super::BeginPlay();
     check(GEngine != nullptr);
 
+    if (IsLocallyControlled() && CrosshairWidgetClass)
+    {
+        if (APlayerController* PlayerController = Cast<APlayerController>(Controller))
+        {
+            CrosshairWidget = CreateWidget<UUserWidget>(
+                PlayerController,
+                CrosshairWidgetClass
+            );
+
+            if (CrosshairWidget)
+            {
+                CrosshairWidget->AddToViewport();
+            }
+        }
+    }
+
+    if (IsLocallyControlled() && GameHUDWidgetClass)
+    {
+        if (APlayerController* PlayerController = Cast<APlayerController>(Controller))
+        {
+            GameHUDWidget = CreateWidget<UUserWidget>(
+                PlayerController,
+                GameHUDWidgetClass
+            );
+
+            if (GameHUDWidget)
+            {
+                GameHUDWidget->AddToViewport();
+            }
+        }
+    }
+
     // 自己只看第一人称 Mesh
     if (FirstPersonMeshComponent)
     {
         FirstPersonMeshComponent->SetOnlyOwnerSee(true);
         FirstPersonMeshComponent->SetCastShadow(false);
     }
+
+    if (FirstPersonWeaponMeshComponent)
+    {
+        FirstPersonWeaponMeshComponent->SetOnlyOwnerSee(true);
+        FirstPersonWeaponMeshComponent->SetCastShadow(false);
+    }
+
     // 自己不看第三人称 Mesh
     GetMesh()->SetOwnerNoSee(true);
+    GetMesh()->SetCastShadow(true);
+    GetMesh()->bCastHiddenShadow = true;
+
+    if (ThirdPersonWeaponMeshComponent)
+    {
+        ThirdPersonWeaponMeshComponent->SetOwnerNoSee(true);
+        ThirdPersonWeaponMeshComponent->SetCastShadow(true);
+    }
+
 
     // 添加 Enhanced Input Mapping Context
     if (APlayerController* PlayerController = Cast<APlayerController>(Controller))
@@ -108,6 +190,8 @@ void AFPSCharacter::BeginPlay()
     // Display a debug message for five seconds. 
     // The -1 "Key" value argument prevents the message from being updated or refreshed.
     GEngine->AddOnScreenDebugMessage(-1, 5.0f, FColor::Red, TEXT("We are using AdventureCharacter."));
+
+
 }
 
 // Called every frame
@@ -214,5 +298,139 @@ void AFPSCharacter::StopJump()
 
 void AFPSCharacter::Fire()
 {
-    UE_LOG(LogTemp, Warning, TEXT("Fire"));
+    // 1. 播放第一人称开火动画：自己看到的枪和手
+    if (FirstPersonFireMontage && FirstPersonMeshComponent)
+    {
+        if (UAnimInstance* FPAnimInstance = FirstPersonMeshComponent->GetAnimInstance())
+        {
+            FPAnimInstance->Montage_Play(FirstPersonFireMontage);
+        }
+    }
+
+    // 2. 播放第三人称开火动画：别人看到的身体，也影响影子
+    if (ThirdPersonFireMontage && GetMesh())
+    {
+        if (UAnimInstance* TPAnimInstance = GetMesh()->GetAnimInstance())
+        {
+            TPAnimInstance->Montage_Play(ThirdPersonFireMontage);
+
+        }
+    }
+
+    // 3. 从第一人称摄像机方向做射线检测
+    if (!FirstPersonCameraComponent)
+    {
+        UE_LOG(LogTemp, Warning, TEXT("Fire failed: FirstPersonCameraComponent is null."));
+        return;
+    }
+
+    UWorld* World = GetWorld();
+    if (!World)
+    {
+        UE_LOG(LogTemp, Warning, TEXT("Fire failed: World is null."));
+        return;
+    }
+
+    const FVector TraceStart = FirstPersonCameraComponent->GetComponentLocation();
+    const FVector TraceDirection = FirstPersonCameraComponent->GetForwardVector();
+    const FVector TraceEnd = TraceStart + TraceDirection * FireTraceDistance;
+
+    FHitResult HitResult;
+
+    FCollisionQueryParams QueryParams;
+    QueryParams.AddIgnoredActor(this);
+    QueryParams.bTraceComplex = true;
+
+    const bool bHit = World->LineTraceSingleByChannel(
+        HitResult,
+        TraceStart,
+        TraceEnd,
+        ECC_Visibility,
+        QueryParams
+    );
+
+    if (bHit)
+    {
+        AActor* HitActor = HitResult.GetActor();
+
+        UE_LOG(
+            LogTemp,
+            Warning,
+            TEXT("Fire Hit: %s, Location: %s"),
+            *GetNameSafe(HitActor),
+            *HitResult.ImpactPoint.ToString()
+        );
+
+        if (GEngine)
+        {
+            const FString HitMessage = FString::Printf(
+                TEXT("Hit: %s"),
+                *GetNameSafe(HitActor)
+            );
+
+            GEngine->AddOnScreenDebugMessage(
+                -1,              // Key，-1 表示每次都新增一条
+                1.5f,            // 显示时间
+                FColor::Green,   // 颜色
+                HitMessage       // 显示内容
+            );
+        }
+
+        if (bDrawFireTraceDebug)
+        {
+            DrawDebugLine(
+                World,
+                TraceStart,
+                HitResult.ImpactPoint,
+                FColor::Green,
+                false,
+                1.0f,
+                0,
+                1.5f
+            );
+
+            DrawDebugSphere(
+                World,
+                HitResult.ImpactPoint,
+                8.0f,
+                12,
+                FColor::Red,
+                false,
+                1.0f
+            );
+        }
+        if (AEnemyCharacter* Enemy = Cast<AEnemyCharacter>(HitActor))
+        {
+            Enemy->TakeHit(25.0f);
+        }
+    }
+    else
+    {
+        UE_LOG(LogTemp, Warning, TEXT("Fire No Hit"));
+
+        if (GEngine)
+        {
+            GEngine->AddOnScreenDebugMessage(
+                -1,
+                1.5f,
+                FColor::Red,
+                TEXT("No Hit")
+            );
+        }
+
+        if (bDrawFireTraceDebug)
+        {
+            DrawDebugLine(
+                World,
+                TraceStart,
+                TraceEnd,
+                FColor::Red,
+                false,
+                1.0f,
+                0,
+                1.5f
+            );
+        }
+    }
+
 }

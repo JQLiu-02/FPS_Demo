@@ -12,6 +12,8 @@ class USkeletalMeshComponent;
 class UInputAction;
 class UInputComponent;
 struct FInputActionValue;
+class UAnimMontage;
+class UUserWidget;
 
 UCLASS()
 class FPS_DEMO_API AFPSCharacter : public ACharacter
@@ -34,6 +36,20 @@ protected:
 
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Components")
 	TObjectPtr<USkeletalMeshComponent> FirstPersonMeshComponent;
+
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Components")
+	TObjectPtr<USkeletalMeshComponent> FirstPersonWeaponMeshComponent;
+
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Components")
+	TObjectPtr<USkeletalMeshComponent> ThirdPersonWeaponMeshComponent;
+
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Weapon")
+	FName FirstPersonWeaponSocketName = TEXT("HandGrip_R");
+
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Weapon")
+	FName ThirdPersonWeaponSocketName = TEXT("HandGrip_R");
+
+
 
 protected:
 
@@ -64,11 +80,38 @@ protected:
 	float FirstPersonScale = 0.6f;
 
 protected:
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Animation")
+	TObjectPtr<UAnimMontage> FirstPersonFireMontage;
+
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Animation")
+	TObjectPtr<UAnimMontage> ThirdPersonFireMontage;
+
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Combat")
+	float FireTraceDistance = 10000.0f;
+
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Combat")
+	bool bDrawFireTraceDebug = true;
+
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "UI")
+	TSubclassOf<UUserWidget> CrosshairWidgetClass;
+
+	UPROPERTY()
+	TObjectPtr<UUserWidget> CrosshairWidget;
+
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "UI")
+	TSubclassOf<UUserWidget> GameHUDWidgetClass;
+
+	UPROPERTY()
+	TObjectPtr<UUserWidget> GameHUDWidget;
+
+protected:
 	void Move(const FInputActionValue& Value);
 	void Look(const FInputActionValue& Value);
 	void StartJump();
 	void StopJump();
 	void Fire();
+
+
 
 public:	
 	// Called every frame
@@ -77,6 +120,9 @@ public:
 	// Called to bind functionality to input
 	virtual void SetupPlayerInputComponent(class UInputComponent* PlayerInputComponent) override;
 
-
+public:
+	UFUNCTION(BlueprintPure, Category = "Components")
+	UCameraComponent* GetFirstPersonCamera() const { return FirstPersonCameraComponent; }
 
 };
+
