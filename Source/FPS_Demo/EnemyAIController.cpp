@@ -6,7 +6,7 @@
 #include "Kismet/GameplayStatics.h"
 #include "GameFramework/Pawn.h"
 #include "TimerManager.h"
-#include "FPSGameMode.h"
+#include "FPSGameState.h"
 #include "Kismet/GameplayStatics.h"
 
 void AEnemyAIController::BeginPlay()
@@ -36,19 +36,27 @@ void AEnemyAIController::BeginPlay()
 
 void AEnemyAIController::UpdateChase()
 {
-    AFPSGameMode* FPSGameMode = Cast<AFPSGameMode>(UGameplayStatics::GetGameMode(this));
-    if (FPSGameMode && !FPSGameMode->IsGamePlaying())
+    if (!HasAuthority())
+    {
+        return;
+    }
+
+    const AFPSGameState* FPSGameState = GetWorld()->GetGameState<AFPSGameState>();
+    if (FPSGameState && !FPSGameState->IsGamePlaying())
     {
         StopMovement();
         return;
     }
 
+    TargetPlayerPawn = FindNearestAlivePlayer();
+
     if (!TargetPlayerPawn)
     {
+        StopMovement();
         return;
     }
 
-    APawn* ControlledPawn = GetPawn();
+    const APawn* ControlledPawn = GetPawn();
     if (!ControlledPawn)
     {
         return;
@@ -59,14 +67,17 @@ void AEnemyAIController::UpdateChase()
         TargetPlayerPawn->GetActorLocation()
     );
 
-    SetFocus(TargetPlayerPawn);
+
 
     if (Distance <= AttackRange)
     {
         StopMovement();
+        SetFocus(TargetPlayerPawn);
         TryAttack();
         return;
     }
+
+    SetFocus(TargetPlayerPawn);
 
     MoveToActor(
         TargetPlayerPawn,
@@ -109,4 +120,46 @@ void AEnemyAIController::TryAttack()
 void AEnemyAIController::ResetAttackCooldown()
 {
     bCanAttack = true;
+}
+
+APawn* AEnemyAIController::FindNearestAlivePlayer() const
+{
+    const APawn* ControlledPawn = GetPawn();
+    if (!ControlledPawn)
+    {
+        return nullptr;
+    }
+
+    TArray<AActor*> PlayerActors;
+    UGameplayStatics::GetAllActorsOfClass(GetWorld(), AFPSCharacter::StaticClass(), PlayerActors);
+
+    APawn* BestTarget = nullptr;
+    float BestDistanceSq = TNumericLimits<float>::Max();
+
+    for (AActor* Actor : PlayerActors)
+    {
+        AFPSCharacter* FPSCharacter = Cast<AFPSCharacter>(Actor);
+        if (!FPSCharacter)
+        {
+            continue;
+        }
+
+        if (FPSCharacter->IsDead())
+        {
+            continue;
+        }
+
+        const float DistanceSq = FVector::DistSquared(
+            ControlledPawn->GetActorLocation(),
+            FPSCharacter->GetActorLocation()
+        );
+
+        if (DistanceSq < BestDistanceSq)
+        {
+            BestDistanceSq = DistanceSq;
+            BestTarget = FPSCharacter;
+        }
+    }
+
+    return BestTarget;
 }

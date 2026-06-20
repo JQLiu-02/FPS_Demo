@@ -5,6 +5,8 @@
 #include "EnemyCharacter.h"
 #include "FPSGameMode.h"
 #include "Kismet/GameplayStatics.h"
+#include "Components/CapsuleComponent.h"
+#include "Net/UnrealNetwork.h"
 
 // Sets default values
 AEnemyCharacter::AEnemyCharacter()
@@ -12,8 +14,13 @@ AEnemyCharacter::AEnemyCharacter()
  	// Set this character to call Tick() every frame.  You can turn this off to improve performance if you don't need it.
 	PrimaryActorTick.bCanEverTick = true;
 
+    bReplicates = true;
+    SetReplicateMovement(true);
+
     AIControllerClass = AEnemyAIController::StaticClass();
     AutoPossessAI = EAutoPossessAI::PlacedInWorldOrSpawned;
+
+    GetCapsuleComponent()->SetCollisionResponseToChannel(ECC_Visibility, ECR_Block);
 
 }
 
@@ -41,29 +48,42 @@ void AEnemyCharacter::SetupPlayerInputComponent(UInputComponent* PlayerInputComp
 
 void AEnemyCharacter::TakeHit(float DamageAmount)
 {
-    CurrentHealth -= DamageAmount;
+    if (!HasAuthority())
+    {
+        return;
+    }
 
-    UE_LOG(LogTemp, Warning, TEXT("Enemy Hit. Health: %f"), CurrentHealth);
+    if (bIsDead)
+    {
+        return;
+    }
+
+    CurrentHealth -= DamageAmount;
 
     if (CurrentHealth <= 0.0f)
     {
+        CurrentHealth = 0.0f;
+        bIsDead = true;
+
         Die();
     }
 }
 
 void AEnemyCharacter::Die()
 {
-    UE_LOG(LogTemp, Warning, TEXT("Enemy Dead"));
+    if (!HasAuthority())
+    {
+        return;
+    }
 
-    if (AFPSGameMode* FPSGameMode = Cast<AFPSGameMode>(UGameplayStatics::GetGameMode(this)))
+    AFPSGameMode* FPSGameMode = GetWorld()->GetAuthGameMode<AFPSGameMode>();
+    if (FPSGameMode)
     {
         FPSGameMode->AddScore(10);
     }
 
-
     Destroy();
 }
-
 void AEnemyCharacter::PlayAttackMontage()
 {
     if (!AttackMontage)
@@ -82,4 +102,12 @@ void AEnemyCharacter::PlayAttackMontage()
     AnimInstance->Montage_Play(AttackMontage);
 
     UE_LOG(LogTemp, Warning, TEXT("Enemy Play Attack Montage"));
+}
+
+void AEnemyCharacter::GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLifetimeProps) const
+{
+    Super::GetLifetimeReplicatedProps(OutLifetimeProps);
+
+    DOREPLIFETIME(AEnemyCharacter, CurrentHealth);
+    DOREPLIFETIME(AEnemyCharacter, bIsDead);
 }

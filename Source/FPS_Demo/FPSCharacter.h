@@ -111,14 +111,24 @@ protected:
 	void StopJump();
 	void Fire();
 
+	UFUNCTION(Server, Reliable)
+	void ServerFire();
+
 
 protected:
 
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Health")
 	float MaxHealth = 100.0f;
 
-	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Health")
+	UPROPERTY(Replicated, VisibleAnywhere, BlueprintReadOnly, Category = "Health")
 	float CurrentHealth = 100.0f;
+
+
+	UPROPERTY(Replicated, VisibleAnywhere, BlueprintReadOnly, Category = "Health")
+	bool bIsDead = false;
+
+
+
 
 	UFUNCTION(BlueprintPure, Category = "Health")
 	float GetCurrentHealth() const { return CurrentHealth; }
@@ -131,6 +141,9 @@ public:
 	UFUNCTION(BlueprintCallable, Category = "Health")
 	void TakeDamageFromEnemy(float DamageAmount);
 
+	UFUNCTION(BlueprintPure, Category = "Health")
+	bool IsDead() const { return bIsDead; }
+
 public:	
 	// Called every frame
 	virtual void Tick(float DeltaTime) override;
@@ -142,5 +155,6 @@ public:
 	UFUNCTION(BlueprintPure, Category = "Components")
 	UCameraComponent* GetFirstPersonCamera() const { return FirstPersonCameraComponent; }
 
+	virtual void GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLifetimeProps) const override;
 };
 

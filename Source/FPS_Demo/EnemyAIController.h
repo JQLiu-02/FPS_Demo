@@ -30,8 +30,7 @@ protected:
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Attack")
 	float AttackInterval = 1.2f;
 
-	UPROPERTY()
-	TObjectPtr<APawn> TargetPlayerPawn;
+
 
 	FTimerHandle ChaseTimerHandle;
 
@@ -44,5 +43,13 @@ protected:
 	void TryAttack();
 
 	void ResetAttackCooldown();
+
+	UPROPERTY()
+	TObjectPtr<APawn> TargetPlayerPawn;
+
+
+private:
+	APawn* FindNearestAlivePlayer() const;
+
 
 };

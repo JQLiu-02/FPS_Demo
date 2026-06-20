@@ -14,7 +14,9 @@
 #include "Engine/Engine.h"
 #include "Blueprint/UserWidget.h"
 #include "EnemyCharacter.h" 
+#include "FPSGameState.h"
 #include "FPSGameMode.h"
+#include "Net/UnrealNetwork.h"
 #include "Kismet/GameplayStatics.h"
 
 
@@ -271,8 +273,13 @@ void AFPSCharacter::SetupPlayerInputComponent(UInputComponent* PlayerInputCompon
 void AFPSCharacter::Move(const FInputActionValue& Value)
 {
 
-    AFPSGameMode* FPSGameMode = Cast<AFPSGameMode>(UGameplayStatics::GetGameMode(this));
-    if (FPSGameMode && !FPSGameMode->IsGamePlaying())
+    if (bIsDead)
+    {
+        return;
+    }
+
+    const AFPSGameState* FPSGameState = GetWorld()->GetGameState<AFPSGameState>();
+    if (FPSGameState && !FPSGameState->IsGamePlaying())
     {
         return;
     }
@@ -309,8 +316,13 @@ void AFPSCharacter::StopJump()
 
 void AFPSCharacter::Fire()
 {
-    AFPSGameMode* FPSGameMode = Cast<AFPSGameMode>(UGameplayStatics::GetGameMode(this));
-    if (FPSGameMode && !FPSGameMode->IsGamePlaying())
+    if (bIsDead)
+    {
+        return;
+    }
+
+    const AFPSGameState* FPSGameState = GetWorld()->GetGameState<AFPSGameState>();
+    if (FPSGameState && !FPSGameState->IsGamePlaying())
     {
         return;
     }
@@ -334,127 +346,25 @@ void AFPSCharacter::Fire()
         }
     }
 
-    // 3. 从第一人称摄像机方向做射线检测
-    if (!FirstPersonCameraComponent)
+    if (HasAuthority())
     {
-        UE_LOG(LogTemp, Warning, TEXT("Fire failed: FirstPersonCameraComponent is null."));
-        return;
-    }
-
-    UWorld* World = GetWorld();
-    if (!World)
-    {
-        UE_LOG(LogTemp, Warning, TEXT("Fire failed: World is null."));
-        return;
-    }
-
-    const FVector TraceStart = FirstPersonCameraComponent->GetComponentLocation();
-    const FVector TraceDirection = FirstPersonCameraComponent->GetForwardVector();
-    const FVector TraceEnd = TraceStart + TraceDirection * FireTraceDistance;
-
-    FHitResult HitResult;
-
-    FCollisionQueryParams QueryParams;
-    QueryParams.AddIgnoredActor(this);
-    QueryParams.bTraceComplex = true;
-
-    const bool bHit = World->LineTraceSingleByChannel(
-        HitResult,
-        TraceStart,
-        TraceEnd,
-        ECC_Visibility,
-        QueryParams
-    );
-
-    if (bHit)
-    {
-        AActor* HitActor = HitResult.GetActor();
-
-        UE_LOG(
-            LogTemp,
-            Warning,
-            TEXT("Fire Hit: %s, Location: %s"),
-            *GetNameSafe(HitActor),
-            *HitResult.ImpactPoint.ToString()
-        );
-
-        if (GEngine)
-        {
-            const FString HitMessage = FString::Printf(
-                TEXT("Hit: %s"),
-                *GetNameSafe(HitActor)
-            );
-
-            GEngine->AddOnScreenDebugMessage(
-                -1,              // Key，-1 表示每次都新增一条
-                1.5f,            // 显示时间
-                FColor::Green,   // 颜色
-                HitMessage       // 显示内容
-            );
-        }
-
-        if (bDrawFireTraceDebug)
-        {
-            DrawDebugLine(
-                World,
-                TraceStart,
-                HitResult.ImpactPoint,
-                FColor::Green,
-                false,
-                1.0f,
-                0,
-                1.5f
-            );
-
-            DrawDebugSphere(
-                World,
-                HitResult.ImpactPoint,
-                8.0f,
-                12,
-                FColor::Red,
-                false,
-                1.0f
-            );
-        }
-        if (AEnemyCharacter* Enemy = Cast<AEnemyCharacter>(HitActor))
-        {
-            Enemy->TakeHit(25.0f);
-        }
+        ServerFire();
     }
     else
     {
-        UE_LOG(LogTemp, Warning, TEXT("Fire No Hit"));
-
-        if (GEngine)
-        {
-            GEngine->AddOnScreenDebugMessage(
-                -1,
-                1.5f,
-                FColor::Red,
-                TEXT("No Hit")
-            );
-        }
-
-        if (bDrawFireTraceDebug)
-        {
-            DrawDebugLine(
-                World,
-                TraceStart,
-                TraceEnd,
-                FColor::Red,
-                false,
-                1.0f,
-                0,
-                1.5f
-            );
-        }
+        ServerFire();
     }
 
 }
 
 void AFPSCharacter::TakeDamageFromEnemy(float DamageAmount)
 {
-    if (CurrentHealth <= 0.0f)
+    if (!HasAuthority())
+    {
+        return;
+    }
+
+    if (bIsDead)
     {
         return;
     }
@@ -464,12 +374,76 @@ void AFPSCharacter::TakeDamageFromEnemy(float DamageAmount)
     if (CurrentHealth <= 0.0f)
     {
         CurrentHealth = 0.0f;
+        bIsDead = true;
 
-        if (AFPSGameMode* FPSGameMode = Cast<AFPSGameMode>(UGameplayStatics::GetGameMode(this)))
+        GetCharacterMovement()->DisableMovement();
+
+        AFPSGameMode* FPSGameMode = GetWorld()->GetAuthGameMode<AFPSGameMode>();
+        if (FPSGameMode)
         {
-            FPSGameMode->GameOver();
+            FPSGameMode->NotifyPlayerDied();
         }
 
         UE_LOG(LogTemp, Warning, TEXT("Player Dead"));
+    }
+}
+
+void AFPSCharacter::GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLifetimeProps) const
+{
+    Super::GetLifetimeReplicatedProps(OutLifetimeProps);
+
+    DOREPLIFETIME(AFPSCharacter, CurrentHealth);
+    DOREPLIFETIME(AFPSCharacter, bIsDead);
+}
+
+void AFPSCharacter::ServerFire_Implementation()
+{
+
+    if (bIsDead)
+    {
+        return;
+    }
+
+    const AFPSGameState* FPSGameState = GetWorld()->GetGameState<AFPSGameState>();
+    if (FPSGameState && !FPSGameState->IsGamePlaying())
+    {
+        return;
+    }
+
+    FVector TraceStart;
+    FRotator ViewRotation;
+
+    if (Controller)
+    {
+        Controller->GetPlayerViewPoint(TraceStart, ViewRotation);
+    }
+    else
+    {
+        TraceStart = GetActorLocation();
+        ViewRotation = GetActorRotation();
+    }
+
+    const FVector TraceEnd = TraceStart + ViewRotation.Vector() * 10000.0f;
+
+    FHitResult HitResult;
+    FCollisionQueryParams QueryParams;
+    QueryParams.AddIgnoredActor(this);
+    QueryParams.bTraceComplex = true;
+
+    const bool bHit = GetWorld()->LineTraceSingleByChannel(
+        HitResult,
+        TraceStart,
+        TraceEnd,
+        ECC_Visibility,
+        QueryParams
+    );
+
+    if (bHit)
+    {
+        AEnemyCharacter* HitEnemy = Cast<AEnemyCharacter>(HitResult.GetActor());
+        if (HitEnemy)
+        {
+            HitEnemy->TakeHit(25.0f);
+        }
     }
 }
