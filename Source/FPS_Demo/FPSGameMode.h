@@ -9,6 +9,15 @@
 /**
  * 
  */
+
+UENUM(BlueprintType)
+enum class EGameResultState : uint8
+{
+    Playing UMETA(DisplayName = "Playing"),
+    Victory UMETA(DisplayName = "Victory"),
+    GameOver UMETA(DisplayName = "Game Over")
+};
+
 UCLASS()
 class FPS_DEMO_API AFPSGameMode : public AGameModeBase
 {
@@ -25,8 +34,8 @@ protected:
     UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Score")
     int32 CurrentScore = 0;
 
-    UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Score")
-    bool bGameWon = false;
+    UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Game State")
+    EGameResultState GameResultState = EGameResultState::Playing;
 
     void CheckVictory();
 
@@ -40,6 +49,16 @@ public:
     UFUNCTION(BlueprintPure, Category = "Score")
     int32 GetTargetScore() const { return TargetScore; }
 
-    UFUNCTION(BlueprintPure, Category = "Score")
-    bool IsGameWon() const { return bGameWon; }
+
+
+    UFUNCTION(BlueprintPure, Category = "Game State")
+    bool IsGameWon() const { return GameResultState == EGameResultState::Victory; }
+
+    UFUNCTION(BlueprintPure, Category = "Game State")
+    bool IsGameOver() const { return GameResultState == EGameResultState::GameOver; }
+
+    UFUNCTION(BlueprintPure, Category = "Game State")
+    bool IsGamePlaying() const { return GameResultState == EGameResultState::Playing; }
+
+    void GameOver();
 };

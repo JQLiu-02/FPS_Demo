@@ -10,7 +10,7 @@ AFPSGameMode::AFPSGameMode()
 
 void AFPSGameMode::AddScore(int32 ScoreAmount)
 {
-    if (bGameWon)
+    if (GameResultState != EGameResultState::Playing)
     {
         return;
     }
@@ -19,41 +19,32 @@ void AFPSGameMode::AddScore(int32 ScoreAmount)
 
     UE_LOG(LogTemp, Warning, TEXT("Score: %d / %d"), CurrentScore, TargetScore);
 
-    if (GEngine)
-    {
-        const FString ScoreMessage = FString::Printf(
-            TEXT("Score: %d / %d"),
-            CurrentScore,
-            TargetScore
-        );
-
-        GEngine->AddOnScreenDebugMessage(
-            -1,
-            2.0f,
-            FColor::Yellow,
-            ScoreMessage
-        );
-    }
-
     CheckVictory();
 }
 
 void AFPSGameMode::CheckVictory()
 {
+    if (GameResultState != EGameResultState::Playing)
+    {
+        return;
+    }
+
     if (CurrentScore >= TargetScore)
     {
-        bGameWon = true;
+        GameResultState = EGameResultState::Victory;
 
         UE_LOG(LogTemp, Warning, TEXT("Victory!"));
-
-        if (GEngine)
-        {
-            GEngine->AddOnScreenDebugMessage(
-                -1,
-                5.0f,
-                FColor::Green,
-                TEXT("Victory!")
-            );
-        }
     }
+}
+
+void AFPSGameMode::GameOver()
+{
+    if (GameResultState != EGameResultState::Playing)
+    {
+        return;
+    }
+
+    GameResultState = EGameResultState::GameOver;
+
+    UE_LOG(LogTemp, Warning, TEXT("Game Over"));
 }

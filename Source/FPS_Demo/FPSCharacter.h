@@ -112,6 +112,24 @@ protected:
 	void Fire();
 
 
+protected:
+
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Health")
+	float MaxHealth = 100.0f;
+
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Health")
+	float CurrentHealth = 100.0f;
+
+	UFUNCTION(BlueprintPure, Category = "Health")
+	float GetCurrentHealth() const { return CurrentHealth; }
+
+	UFUNCTION(BlueprintPure, Category = "Health")
+	float GetMaxHealth() const { return MaxHealth; }
+
+public:
+
+	UFUNCTION(BlueprintCallable, Category = "Health")
+	void TakeDamageFromEnemy(float DamageAmount);
 
 public:	
 	// Called every frame

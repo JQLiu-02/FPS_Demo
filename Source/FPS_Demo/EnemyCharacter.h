@@ -6,6 +6,8 @@
 #include "GameFramework/Character.h"
 #include "EnemyCharacter.generated.h"
 
+class UAnimMontage;
+
 UCLASS()
 class FPS_DEMO_API AEnemyCharacter : public ACharacter
 {
@@ -43,4 +45,11 @@ public:
 	// Called to bind functionality to input
 	virtual void SetupPlayerInputComponent(class UInputComponent* PlayerInputComponent) override;
 
+public:
+
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Attack")
+	TObjectPtr<UAnimMontage> AttackMontage;
+
+	UFUNCTION(BlueprintCallable, Category = "Attack")
+	void PlayAttackMontage();
 };

@@ -14,6 +14,8 @@
 #include "Engine/Engine.h"
 #include "Blueprint/UserWidget.h"
 #include "EnemyCharacter.h" 
+#include "FPSGameMode.h"
+#include "Kismet/GameplayStatics.h"
 
 
 // Sets default values
@@ -97,6 +99,8 @@ AFPSCharacter::AFPSCharacter()
     ThirdPersonWeaponMeshComponent->SetOwnerNoSee(true);
     ThirdPersonWeaponMeshComponent->SetCastShadow(true);
     ThirdPersonWeaponMeshComponent->bCastHiddenShadow = true;
+
+    CurrentHealth = MaxHealth;
 }
 
 // Called when the game starts or when spawned
@@ -266,6 +270,13 @@ void AFPSCharacter::SetupPlayerInputComponent(UInputComponent* PlayerInputCompon
 
 void AFPSCharacter::Move(const FInputActionValue& Value)
 {
+
+    AFPSGameMode* FPSGameMode = Cast<AFPSGameMode>(UGameplayStatics::GetGameMode(this));
+    if (FPSGameMode && !FPSGameMode->IsGamePlaying())
+    {
+        return;
+    }
+
     const FVector2D MovementVector = Value.Get<FVector2D>();
 
     if (Controller)
@@ -298,6 +309,12 @@ void AFPSCharacter::StopJump()
 
 void AFPSCharacter::Fire()
 {
+    AFPSGameMode* FPSGameMode = Cast<AFPSGameMode>(UGameplayStatics::GetGameMode(this));
+    if (FPSGameMode && !FPSGameMode->IsGamePlaying())
+    {
+        return;
+    }
+
     // 1. 播放第一人称开火动画：自己看到的枪和手
     if (FirstPersonFireMontage && FirstPersonMeshComponent)
     {
@@ -433,4 +450,26 @@ void AFPSCharacter::Fire()
         }
     }
 
+}
+
+void AFPSCharacter::TakeDamageFromEnemy(float DamageAmount)
+{
+    if (CurrentHealth <= 0.0f)
+    {
+        return;
+    }
+
+    CurrentHealth -= DamageAmount;
+
+    if (CurrentHealth <= 0.0f)
+    {
+        CurrentHealth = 0.0f;
+
+        if (AFPSGameMode* FPSGameMode = Cast<AFPSGameMode>(UGameplayStatics::GetGameMode(this)))
+        {
+            FPSGameMode->GameOver();
+        }
+
+        UE_LOG(LogTemp, Warning, TEXT("Player Dead"));
+    }
 }
